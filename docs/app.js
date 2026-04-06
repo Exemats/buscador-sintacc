@@ -28,9 +28,43 @@ const elInfoModal = $("#info-modal");
 const elInfoClose = $("#info-close");
 const elInfoUpdated = $("#info-updated");
 
+const elChips = document.querySelectorAll(".chip[data-field]");
+
 let allProductos = [];
 let mini = null;
 let dataMeta = null;
+
+// Campo activo para filtrar búsqueda: "" = todos, "n" = nombre, "m" = marca, "e" = empresa
+let activeField = "";
+const FIELD_LABELS = { "": "todos los campos", n: "nombre", m: "marca", e: "empresa" };
+const FIELD_PLACEHOLDERS = {
+  "": "Buscar por nombre, marca, empresa o RNPA…",
+  n: "Buscar por nombre del producto…",
+  m: "Buscar por marca…",
+  e: "Buscar por empresa…",
+};
+
+// Índice de marcas para detección en OCR/scanner.
+let brandsSorted = []; // [{ lower, original }] ordenado por longitud desc
+
+function buildBrandIndex() {
+  const seen = new Set();
+  brandsSorted = allProductos
+    .map(p => (p.m || "").trim())
+    .filter(b => b.length >= 3 && !seen.has(b.toLowerCase()) && seen.add(b.toLowerCase()))
+    .map(b => ({ lower: b.toLowerCase(), original: b }))
+    .sort((a, b) => b.lower.length - a.lower.length);
+}
+
+// Busca la primera marca conocida que aparezca en el texto OCR.
+// Devuelve el valor original del dataset (p.ej. "NATURA") o null.
+function detectBrand(text) {
+  const lower = text.toLowerCase();
+  for (const { lower: bl, original } of brandsSorted) {
+    if (lower.includes(bl)) return original;
+  }
+  return null;
+}
 
 // ---------- helpers ----------
 
@@ -124,9 +158,7 @@ async function loadData() {
 }
 
 function buildIndex() {
-  // MiniSearch: índice tolerante a typos y palabras incompletas. Usa OR
-  // para no descartar cuando una palabra no matchea, pero rankea por
-  // cantidad de tokens que matchean (mayor score = mejor coincidencia).
+  // MiniSearch: índice tolerante a typos y palabras incompletas.
   // eslint-disable-next-line no-undef
   mini = new MiniSearch({
     idField: "r",
@@ -141,6 +173,7 @@ function buildIndex() {
     extractField: (doc, field) => doc[field] || "",
   });
   mini.addAll(allProductos);
+  buildBrandIndex();
 }
 
 function updateMetaUI() {
@@ -157,9 +190,11 @@ function updateMetaUI() {
 
 // ---------- búsqueda ----------
 
-function searchProductos(term) {
+// field: "" = todos, "n" = nombre, "m" = marca, "e" = empresa
+function searchProductos(term, field = "") {
   if (!mini || !term) return [];
   // 1) ¿Parece un RNPA o código numérico? (>=4 dígitos al normalizar)
+  //    Se aplica siempre, sin importar el campo activo.
   const norm = normalizeRnpa(term);
   const isMostlyNumeric = term.replace(/\D/g, "").length / term.length > 0.6;
   if (isMostlyNumeric && norm.length >= 4) {
@@ -170,10 +205,10 @@ function searchProductos(term) {
       if (prefix.length) return prefix;
     }
   }
-  // 2) Búsqueda fuzzy/text con OR. Intentamos primero AND para resultados
-  //    estrictos; si no hay nada, OR para tolerar typos/palabras extra.
-  let hits = mini.search(term, { combineWith: "AND" });
-  if (!hits.length) hits = mini.search(term, { combineWith: "OR" });
+  // 2) Búsqueda fuzzy/text. Si hay campo activo, busca solo en ese campo.
+  const fieldOpts = field ? { fields: [field], boost: {} } : {};
+  let hits = mini.search(term, { combineWith: "AND", ...fieldOpts });
+  if (!hits.length) hits = mini.search(term, { combineWith: "OR", ...fieldOpts });
   return hits
     .map(r => allProductos.find(p => p.r === r.id))
     .filter(Boolean);
@@ -190,10 +225,20 @@ function onSearchInput() {
   const seq = ++lastSeq;
   timer = setTimeout(() => {
     if (seq !== lastSeq) return;
-    const results = searchProductos(term);
+    const results = searchProductos(term, activeField);
     render(results, term);
   }, 100);
 }
+
+// Chips de filtro por campo
+elChips.forEach(chip => {
+  chip.addEventListener("click", () => {
+    activeField = chip.dataset.field;
+    elChips.forEach(c => c.setAttribute("aria-pressed", c === chip ? "true" : "false"));
+    elQ.placeholder = FIELD_PLACEHOLDERS[activeField] || FIELD_PLACEHOLDERS[""];
+    onSearchInput();
+  });
+});
 
 elQ.addEventListener("input", onSearchInput);
 elClear.addEventListener("click", () => { elQ.value = ""; elQ.focus(); onSearchInput(); });
@@ -354,21 +399,63 @@ async function fetchOpenFoodFacts(code) {
       return;
     }
     const p = data.product || {};
-    const nombre = p.product_name || p.generic_name || "";
-    const marca = (p.brands || "").split(",")[0].trim();
-    const query = [marca, nombre].filter(Boolean).join(" ");
-    if (!query) {
-      setStatus(`Código ${code}: el producto existe en OpenFoodFacts pero sin nombre claro.`, "error");
-      return;
+    const offNombre = (p.product_name || p.generic_name || "").trim();
+    const offMarca = (p.brands || "").split(",")[0].trim();
+
+    // Estrategia: buscar primero por marca en campo "m", luego por nombre en "n",
+    // luego combinar. Mostramos los resultados más específicos que encontremos.
+    let results = [];
+    let matchDesc = "";
+
+    if (offMarca) {
+      const porMarca = searchProductos(offMarca, "m");
+      if (porMarca.length) {
+        // Si también hay nombre, tratamos de cruzar (marca AND nombre)
+        if (offNombre) {
+          const cruzados = porMarca.filter(prod => {
+            const n = (prod.n || "").toLowerCase();
+            return offNombre.toLowerCase().split(/\s+/).some(w => w.length > 3 && n.includes(w));
+          });
+          if (cruzados.length) {
+            results = cruzados;
+            matchDesc = `marca "${offMarca}" y nombre "${offNombre}"`;
+          }
+        }
+        if (!results.length) {
+          results = porMarca;
+          matchDesc = `marca "${offMarca}"`;
+        }
+      }
     }
-    elQ.value = query;
-    const results = searchProductos(query);
-    if (results.length) {
-      setStatus(`OpenFoodFacts dice "${query}" — coincidencias en ANMAT:`, "ok");
-      render(results, query);
+
+    if (!results.length && offNombre) {
+      const porNombre = searchProductos(offNombre, "n");
+      if (porNombre.length) {
+        results = porNombre;
+        matchDesc = `nombre "${offNombre}"`;
+      }
+    }
+
+    // Fallback: búsqueda combinada genérica
+    if (!results.length) {
+      const query = [offMarca, offNombre].filter(Boolean).join(" ");
+      if (!query) {
+        setStatus(`Código ${code}: el producto existe en OpenFoodFacts pero sin nombre claro.`, "error");
+        return;
+      }
+      results = searchProductos(query);
+      matchDesc = `"${query}"`;
+      elQ.value = query;
     } else {
-      setStatus(`OpenFoodFacts identificó "${query}" pero NO figura en ANMAT. Esto NO confirma que tenga TACC.`, "error");
-      render([], query);
+      elQ.value = [offMarca, offNombre].filter(Boolean).join(" ");
+    }
+
+    if (results.length) {
+      setStatus(`OpenFoodFacts identificó ${matchDesc} — coincidencias en ANMAT:`, "ok");
+      render(results, elQ.value);
+    } else {
+      setStatus(`OpenFoodFacts identificó ${matchDesc || `"${code}"`} pero NO figura en ANMAT. Esto NO confirma que tenga TACC.`, "error");
+      render([], elQ.value);
     }
   } catch (e) {
     setStatus("Error consultando OpenFoodFacts: " + e.message, "error");
@@ -502,7 +589,40 @@ elOcrInput.addEventListener("change", async () => {
       }
     }
 
-    // 2) Intentar con cada línea larga del envase.
+    // 2) Detectar marca conocida del dataset en el texto del envase.
+    //    Si hay marca, buscar específicamente en campo "m"; si también hay
+    //    texto de nombre, tratar de afinar los resultados.
+    const detectedBrand = detectBrand(cleaned);
+    if (detectedBrand) {
+      const porMarca = searchProductos(detectedBrand, "m");
+      if (porMarca.length) {
+        // Intentar afinar con las líneas del texto (campo nombre)
+        const lines = cleaned
+          .split(/\n+/)
+          .map(l => l.trim().replace(/[^\wáéíóúñÁÉÍÓÚÑ\s]/g, " ").replace(/\s+/g, " "))
+          .filter(l => l.length >= 4 && /[a-záéíóúñ]/i.test(l));
+        let best = null;
+        for (const line of lines.sort((a, b) => b.length - a.length).slice(0, 4)) {
+          const porNombre = searchProductos(line, "n");
+          // cruzar con porMarca
+          const cruzados = porMarca.filter(prod => porNombre.some(q => q.r === prod.r));
+          if (cruzados.length) { best = { results: cruzados, term: line }; break; }
+        }
+        if (best) {
+          elQ.value = best.term;
+          setStatus(`Marca detectada: "${detectedBrand}" · Producto: "${best.term}"`, "ok");
+          render(best.results, best.term);
+          return;
+        }
+        // Sin cruce: mostrar todos los productos de esa marca
+        elQ.value = detectedBrand;
+        setStatus(`Marca detectada en el envase: "${detectedBrand}"`, "ok");
+        render(porMarca, detectedBrand);
+        return;
+      }
+    }
+
+    // 3) Intentar con cada línea larga del envase (búsqueda general).
     const lines = cleaned
       .split(/\n+/)
       .map(l => l.trim().replace(/[^\wáéíóúñÁÉÍÓÚÑ\s]/g, " ").replace(/\s+/g, " "))
