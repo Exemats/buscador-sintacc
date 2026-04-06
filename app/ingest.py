@@ -32,6 +32,7 @@ COLUMN_ALIASES = {
     "empresa": ["empresa", "razon social", "elaborador", "establecimiento"],
     "categoria": ["tipoproducto", "tipo producto", "categoria", "rubro"],
     "estado": ["estado"],
+    "activo": ["activo"],
     "provincia": ["provincia"],
     "vencimiento": ["vencimiento", "vto", "fecha vencimiento"],
     "gtin": ["gtin", "ean", "codigo de barras"],
@@ -161,7 +162,8 @@ def load_excel(path: Path | str, *, db_path: Path | str | None = None) -> int:
         if not rnpa:
             continue
         estado = _get(r, "estado").lower()
-        if estado in {"baja", "inactivo", "0", "false"}:
+        activo = _get(r, "activo").lower()
+        if estado in {"baja", "inactivo", "0", "false"} or activo in {"0", "false", "no"}:
             skipped_inactive += 1
             continue
         nombre = _get(r, "nombre") or _get(r, "denominacion")
