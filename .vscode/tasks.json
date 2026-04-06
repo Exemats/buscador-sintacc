@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Setup: install + playwright",
+      "type": "shell",
+      "command": "pip install -e \".[dev]\" && playwright install chromium",
+      "problemMatcher": []
+    },
+    {
+      "label": "Datos: descargar ANMAT",
+      "type": "shell",
+      "command": "python scripts/update_anmat.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "Tests",
+      "type": "shell",
+      "command": "python -m pytest -q",
+      "problemMatcher": []
+    }
+  ]
+}

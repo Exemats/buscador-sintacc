@@ -14,7 +14,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install
-        run: pip install -e .
+        run: |
+          pip install -e .
+          playwright install --with-deps chromium
       - name: Download & load ANMAT
         run: python scripts/update_anmat.py
       - name: Commit DB

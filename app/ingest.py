@@ -1,10 +1,9 @@
 """Descarga el listado de productos sin TACC desde ANMAT y lo carga en SQLite.
 
-El sitio https://listadoalg.anmat.gob.ar/Home es un WebForms ASP.NET. El
-botón "Exportar a Excel" hace un postback con los campos `__VIEWSTATE`,
-`__VIEWSTATEGENERATOR` y `__EVENTVALIDATION`. La función `download_excel`
-intenta replicar ese postback. Si ANMAT bloquea o cambia el flujo, se
-puede usar `load_excel(path)` con un .xlsx descargado a mano.
+El sitio https://listadoalg.anmat.gob.ar/Home es una SPA dinámica, así
+que no se puede scrapear con requests/BeautifulSoup: usamos Playwright
+para abrir un navegador headless, esperar a que cargue, hacer click en
+"Exportar a Excel" y capturar el archivo descargado.
 """
 from __future__ import annotations
 
@@ -14,27 +13,22 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-import httpx
 import pandas as pd
-from bs4 import BeautifulSoup
 
 from . import db
 
 log = logging.getLogger(__name__)
 
 ANMAT_URL = "https://listadoalg.anmat.gob.ar/Home"
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-)
 
 # Mapeo flexible: claves = lo que esperamos en la DB, valores = posibles
 # nombres de columna en el Excel del ANMAT (case-insensitive, sin acentos).
 COLUMN_ALIASES = {
-    "rnpa": ["rnpa", "rnpasenasainv", "rnpa_senasa_inv", "registro"],
-    "nombre": ["nombre", "nombre del producto", "producto", "nombre de fantasia"],
+    "rnpa": ["rnpa", "rnpasenasainv", "rnpa_senasa_inv", "registro", "rnpasenasa"],
+    "nombre": ["nombre", "nombre del producto", "producto", "nombre de fantasia",
+               "denominacion", "denominacion de venta"],
     "marca": ["marca"],
-    "empresa": ["empresa", "razon social", "elaborador"],
+    "empresa": ["empresa", "razon social", "elaborador", "establecimiento"],
     "categoria": ["categoria", "rubro"],
     "provincia": ["provincia"],
     "vencimiento": ["vencimiento", "vto", "fecha vencimiento"],
@@ -65,69 +59,83 @@ def _resolve_columns(df_columns: Iterable[str]) -> dict[str, str | None]:
     return out
 
 
-def download_excel(dest: Path, *, timeout: float = 60.0) -> Path:
-    """Descarga el Excel oficial de ANMAT replicando el postback ASP.NET."""
-    headers = {
-        "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
-    }
-    with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True) as c:
-        r = c.get(ANMAT_URL)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "lxml")
+def download_excel(
+    dest: Path,
+    *,
+    headless: bool = True,
+    timeout_ms: int = 90_000,
+) -> Path:
+    """Descarga el Excel oficial de ANMAT usando Playwright.
 
-        def _v(name: str) -> str:
-            tag = soup.find("input", {"name": name})
-            return tag["value"] if tag and tag.has_attr("value") else ""
+    Abre el navegador, espera a que cargue la página dinámica, busca el
+    botón/link "Exportar a Excel", lo clickea y captura el archivo.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as e:
+        raise RuntimeError(
+            "Playwright no está instalado. Corré:\n"
+            "    pip install -e .\n"
+            "    playwright install chromium"
+        ) from e
 
-        # Buscar el botón/control de exportación. Probamos varios nombres.
-        export_candidates = [
-            "ctl00$ContentPlaceHolder1$btnExportar",
-            "ctl00$ContentPlaceHolder1$btnExcel",
-            "ctl00$MainContent$btnExportar",
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
+        context = browser.new_context(
+            accept_downloads=True,
+            locale="es-AR",
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
+        )
+        page = context.new_page()
+        page.set_default_timeout(timeout_ms)
+
+        log.info("Abriendo %s", ANMAT_URL)
+        page.goto(ANMAT_URL, wait_until="networkidle")
+
+        # Probamos varias formas de encontrar el botón "Exportar a Excel".
+        candidatos = [
+            "text=/exportar a excel/i",
+            "text=/exportar/i",
+            "role=button[name=/excel/i]",
+            "role=link[name=/excel/i]",
+            "[title*='Excel' i]",
+            "[aria-label*='Excel' i]",
+            "img[alt*='Excel' i]",
         ]
-        export_name = None
-        for name in export_candidates:
-            if soup.find("input", {"name": name}) or soup.find(
-                "a", {"id": name.replace("$", "_")}
-            ):
-                export_name = name
-                break
-        if export_name is None:
-            # Fallback: primer input cuyo id contenga "xport" o "xcel".
-            tag = soup.find(
-                "input",
-                {"name": re.compile(r"(xport|xcel)", re.I)},
-            )
-            if tag:
-                export_name = tag["name"]
-        if export_name is None:
+        boton = None
+        for sel in candidatos:
+            loc = page.locator(sel).first
+            try:
+                if loc.count() > 0:
+                    loc.wait_for(state="visible", timeout=5_000)
+                    boton = loc
+                    log.info("Botón encontrado con selector: %s", sel)
+                    break
+            except Exception:
+                continue
+
+        if boton is None:
+            html = page.content()[:2000]
+            browser.close()
             raise RuntimeError(
-                "No se encontró el control de 'Exportar a Excel' en la página ANMAT."
-                " Descargá el .xlsx manualmente y pasalo a load_excel()."
+                "No se encontró el botón 'Exportar a Excel' en la página. "
+                "El sitio puede haber cambiado. Primeros 2KB del HTML:\n" + html
             )
 
-        data = {
-            "__VIEWSTATE": _v("__VIEWSTATE"),
-            "__VIEWSTATEGENERATOR": _v("__VIEWSTATEGENERATOR"),
-            "__EVENTVALIDATION": _v("__EVENTVALIDATION"),
-            "__EVENTTARGET": "",
-            "__EVENTARGUMENT": "",
-            export_name: "Exportar",
-        }
-        r2 = c.post(ANMAT_URL, data=data)
-        r2.raise_for_status()
-        ct = r2.headers.get("content-type", "")
-        if "sheet" not in ct and "excel" not in ct and not r2.content[:2] == b"PK":
-            raise RuntimeError(
-                f"Respuesta inesperada de ANMAT (content-type={ct!r}); "
-                "probablemente cambió el flujo de exportación."
-            )
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(r2.content)
-        log.info("Excel ANMAT descargado en %s (%d bytes)", dest, len(r2.content))
-        return dest
+        log.info("Clickeando el botón y esperando descarga…")
+        with page.expect_download(timeout=timeout_ms) as dl_info:
+            boton.click()
+        download = dl_info.value
+        download.save_as(dest)
+        browser.close()
+
+    log.info("Excel ANMAT descargado en %s (%d bytes)", dest, dest.stat().st_size)
+    return dest
 
 
 def load_excel(path: Path | str, *, db_path: Path | str | None = None) -> int:
@@ -172,8 +180,8 @@ def load_excel(path: Path | str, *, db_path: Path | str | None = None) -> int:
     return len(rows)
 
 
-def run(*, db_path: Path | str | None = None) -> int:
+def run(*, db_path: Path | str | None = None, headless: bool = True) -> int:
     """Descarga + carga. Si la descarga falla, lanza la excepción."""
     raw = Path("data/anmat_raw.xlsx")
-    download_excel(raw)
+    download_excel(raw, headless=headless)
     return load_excel(raw, db_path=db_path)

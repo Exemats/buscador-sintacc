@@ -16,22 +16,39 @@ Características v1:
 > significa que tenga TACC**. Solo refleja el listado oficial de ANMAT
 > en su última actualización.
 
-## Desarrollo
+## Correrlo en VSCode (local)
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+1. Abrí la carpeta en VSCode (instalá la extensión **Python** de Microsoft).
+2. Creá el venv y la dependencia (terminal de VSCode, `Ctrl+ñ`):
+   ```bash
+   python -m venv .venv
+   # Linux/Mac
+   source .venv/bin/activate
+   # Windows
+   .venv\Scripts\activate
 
-# Cargar datos (intenta descargar de ANMAT, o pasale un Excel local):
-python scripts/update_anmat.py
-# o:
-python scripts/update_anmat.py /ruta/a/listado.xlsx
+   pip install -e ".[dev]"
+   playwright install chromium
+   ```
+   (o corré la tarea **"Setup: install + playwright"** desde
+   `Terminal → Run Task…`).
+3. **Descargar los datos del ANMAT** (Playwright abre Chromium, hace
+   click en "Exportar a Excel" y guarda el archivo):
+   ```bash
+   python scripts/update_anmat.py            # headless
+   python scripts/update_anmat.py --headed   # ver el navegador
+   ```
+   Esto crea `data/productos.db`. La primera vez conviene usar
+   `--headed` para verificar que encuentra el botón.
+4. **Levantar la webapp**: en VSCode, panel **Run and Debug** (`Ctrl+Shift+D`),
+   elegí **"Run webapp (uvicorn)"** y dale play. O por terminal:
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+5. Abrí http://localhost:8000.
 
-# Levantar la app:
-uvicorn app.main:app --reload
-```
-
-Luego abrir http://localhost:8000.
+> El escáner de cámara solo funciona en `localhost` o HTTPS. Para
+> probarlo desde el celular en la misma red, usá `ngrok http 8000`.
 
 ## Estructura
 
