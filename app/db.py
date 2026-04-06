@@ -57,11 +57,24 @@ def normalize_rnpa(s: str) -> str:
     return "".join(ch for ch in s if ch.isdigit())
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Migra esquemas viejos al actual sin perder la DB."""
+    cur = conn.execute("PRAGMA table_info(productos)")
+    cols = {row[1] for row in cur.fetchall()}
+    if cols and "rnpa_norm" not in cols:
+        # Esquema viejo: lo más simple y seguro es recrear todo.
+        conn.executescript(
+            "DROP TABLE IF EXISTS productos_fts;"
+            "DROP TABLE IF EXISTS productos;"
+        )
+
+
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
     p = Path(path) if path else DB_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(p)
     conn.row_factory = sqlite3.Row
+    _migrate(conn)
     conn.executescript(SCHEMA)
     return conn
 
