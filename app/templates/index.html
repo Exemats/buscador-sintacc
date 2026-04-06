@@ -10,17 +10,27 @@
 
   <label for="q" class="visually-hidden">Búsqueda</label>
   <div class="search-box">
+    <span class="search-icon" aria-hidden="true">⌕</span>
     <input
       id="q"
       type="search"
       inputmode="search"
-      placeholder="Ej: Arcor mermelada, o un RNPA (con o sin guiones)"
+      placeholder="Buscá un producto, marca o RNPA…"
       autofocus
       autocomplete="off"
       aria-controls="results"
       aria-describedby="search-hint">
     <button id="clear" type="button" class="clear" aria-label="Limpiar búsqueda" hidden>×</button>
   </div>
+
+  <div class="filters" role="tablist" aria-label="Filtrar por campo">
+    <button type="button" class="chip is-active" data-field="">Todos</button>
+    <button type="button" class="chip" data-field="nombre">Producto</button>
+    <button type="button" class="chip" data-field="marca">Marca</button>
+    <button type="button" class="chip" data-field="empresa">Empresa</button>
+    <button type="button" class="chip" data-field="rnpa">RNPA</button>
+  </div>
+
   <p id="search-hint" class="hint">
     El RNPA puede ingresarse con o sin guiones — buscamos las dos formas.
   </p>

@@ -3,8 +3,11 @@ const results = document.getElementById("results");
 const status = document.getElementById("status");
 const clearBtn = document.getElementById("clear");
 
+const chips = document.querySelectorAll(".chip");
+
 let timer = null;
 let lastSeq = 0;
+let currentField = "";
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({
@@ -23,15 +26,19 @@ function field(label, value, opts = {}) {
 }
 
 function renderItem(p) {
-  const titulo = p.nombre || p.empresa || p.rnpa;
+  const titulo = p.nombre || p.marca || p.empresa || p.rnpa;
+  const subt = p.nombre && p.marca ? p.marca : "";
   return `
     <li class="result-card">
       <header class="result-header">
-        <h2 class="title">${escapeHtml(titulo)}</h2>
+        <div class="result-heading">
+          <h2 class="title">${escapeHtml(titulo)}</h2>
+          ${subt ? `<p class="subtitle">${escapeHtml(subt)}</p>` : ""}
+        </div>
         <span class="badge" aria-label="Producto sin TACC según ANMAT">SIN TACC</span>
       </header>
       <div class="fields">
-        ${field("Marca", p.marca)}
+        ${!subt ? field("Marca", p.marca) : ""}
         ${field("Empresa", p.empresa)}
         ${field("Categoría", p.categoria)}
         ${field("Provincia", p.provincia)}
@@ -70,7 +77,7 @@ async function doSearch() {
   const seq = ++lastSeq;
   setStatus("Buscando…");
   try {
-    const r = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
+    const r = await fetch(`/api/search?q=${encodeURIComponent(term)}&field=${encodeURIComponent(currentField)}`);
     if (seq !== lastSeq) return;
     const data = await r.json();
     render(data.results || [], term);
@@ -84,6 +91,14 @@ q.addEventListener("input", () => {
   clearTimeout(timer);
   timer = setTimeout(doSearch, 150);
 });
+
+chips.forEach(c => c.addEventListener("click", () => {
+  chips.forEach(x => x.classList.remove("is-active"));
+  c.classList.add("is-active");
+  currentField = c.dataset.field || "";
+  doSearch();
+  q.focus();
+}));
 
 clearBtn.addEventListener("click", () => {
   q.value = "";
