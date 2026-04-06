@@ -31,8 +31,9 @@ def scan(request: Request):
 
 
 @app.get("/api/search")
-def api_search(q: str = Query("", min_length=0), limit: int = 20):
-    return {"query": q, "results": search.search(q, limit=limit)}
+def api_search(q: str = Query("", min_length=0), limit: int = 20, field: str = ""):
+    f = field or None
+    return {"query": q, "field": f, "results": search.search(q, limit=limit, field=f)}
 
 
 @app.get("/api/producto/{rnpa}")

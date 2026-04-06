@@ -12,15 +12,19 @@ def _row(r: sqlite3.Row) -> dict[str, Any]:
     return {k: r[k] for k in r.keys()}
 
 
-def _fts_query(q: str) -> str:
+FIELD_COLUMNS = {"nombre", "marca", "empresa", "rnpa"}
+
+
+def _fts_query(q: str, field: str | None = None) -> str:
     # Tokens alfanuméricos, prefijo en cada uno para autocompletado.
     tokens = re.findall(r"[\wáéíóúñÁÉÍÓÚÑ]+", q, flags=re.UNICODE)
     if not tokens:
         return ""
-    return " AND ".join(f"{t}*" for t in tokens)
+    prefix = f"{field}:" if field in FIELD_COLUMNS else ""
+    return " AND ".join(f"{prefix}{t}*" for t in tokens)
 
 
-def search(q: str, limit: int = 20, db_path=None) -> list[dict]:
+def search(q: str, limit: int = 20, field: str | None = None, db_path=None) -> list[dict]:
     q = (q or "").strip()
     if not q:
         return []
@@ -28,7 +32,7 @@ def search(q: str, limit: int = 20, db_path=None) -> list[dict]:
         # 1) Si parece un RNPA (>=4 dígitos cuando se sacan separadores),
         #    intentamos match exacto contra rnpa o rnpa_norm.
         norm = db.normalize_rnpa(q)
-        if len(norm) >= 4:
+        if len(norm) >= 4 and field in (None, "rnpa"):
             exact = conn.execute(
                 "SELECT * FROM productos WHERE rnpa = ? OR rnpa_norm = ? LIMIT 1",
                 (q, norm),
@@ -45,7 +49,7 @@ def search(q: str, limit: int = 20, db_path=None) -> list[dict]:
                 if rows:
                     return [_row(r) for r in rows]
 
-        fts = _fts_query(q)
+        fts = _fts_query(q, field)
         if not fts:
             return []
         rows = conn.execute(
