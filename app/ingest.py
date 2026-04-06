@@ -188,15 +188,30 @@ def load_excel(path: Path | str, *, db_path: Path | str | None = None) -> int:
     if skipped_inactive:
         log.info("Filas inactivas/baja descartadas: %d", skipped_inactive)
 
+    # Deduplicar por RNPA: el Excel a veces trae varias filas con el mismo
+    # registro (distintas presentaciones o marcas). Nos quedamos con la
+    # primera ocurrencia.
+    seen = set()
+    unique = []
+    for row in rows:
+        if row[0] in seen:
+            continue
+        seen.add(row[0])
+        unique.append(row)
+    if len(unique) != len(rows):
+        log.info("Filas duplicadas por RNPA descartadas: %d", len(rows) - len(unique))
+
     with db.session(db_path) as conn:
         conn.execute("DELETE FROM productos")
+        conn.execute("DELETE FROM productos_fts")
         conn.executemany(
-            """INSERT INTO productos
+            """INSERT OR REPLACE INTO productos
                (rnpa, nombre, marca, empresa, categoria, provincia,
                 vencimiento, gtin, actualizado_en)
                VALUES (?,?,?,?,?,?,?,?,?)""",
-            rows,
+            unique,
         )
+    rows = unique
     log.info("Cargadas %d filas en %s", len(rows), db_path or db.DB_PATH)
     return len(rows)
 
