@@ -2,20 +2,22 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run webapp (uvicorn)",
+      "name": "▶ Run app (auto)",
       "type": "debugpy",
       "request": "launch",
-      "module": "uvicorn",
-      "args": ["app.main:app", "--reload", "--port", "8000"],
-      "jinja": true,
-      "justMyCode": false
+      "program": "${workspaceFolder}/scripts/serve.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "jinja": true
     },
     {
-      "name": "Update ANMAT (headless)",
+      "name": "▶ Run app + refrescar datos",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/scripts/update_anmat.py",
-      "console": "integratedTerminal"
+      "program": "${workspaceFolder}/scripts/serve.py",
+      "args": ["--refresh"],
+      "console": "integratedTerminal",
+      "jinja": true
     },
     {
       "name": "Update ANMAT (mostrar navegador)",
