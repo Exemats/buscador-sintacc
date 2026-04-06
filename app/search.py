@@ -25,12 +25,25 @@ def search(q: str, limit: int = 20, db_path=None) -> list[dict]:
     if not q:
         return []
     with db.session(db_path) as conn:
-        # 1) Match exacto por RNPA (caso típico de copiar de un envase).
-        exact = conn.execute(
-            "SELECT * FROM productos WHERE rnpa = ? LIMIT 1", (q,)
-        ).fetchone()
-        if exact:
-            return [_row(exact)]
+        # 1) Si parece un RNPA (>=4 dígitos cuando se sacan separadores),
+        #    intentamos match exacto contra rnpa o rnpa_norm.
+        norm = db.normalize_rnpa(q)
+        if len(norm) >= 4:
+            exact = conn.execute(
+                "SELECT * FROM productos WHERE rnpa = ? OR rnpa_norm = ? LIMIT 1",
+                (q, norm),
+            ).fetchone()
+            if exact:
+                return [_row(exact)]
+            # Match por prefijo del rnpa_norm (envases que muestran solo
+            # parte del registro).
+            if len(norm) >= 6:
+                rows = conn.execute(
+                    "SELECT * FROM productos WHERE rnpa_norm LIKE ? || '%' LIMIT ?",
+                    (norm, limit),
+                ).fetchall()
+                if rows:
+                    return [_row(r) for r in rows]
 
         fts = _fts_query(q)
         if not fts:
@@ -50,9 +63,12 @@ def search(q: str, limit: int = 20, db_path=None) -> list[dict]:
 
 
 def get_by_rnpa(rnpa: str, db_path=None) -> dict | None:
+    rnpa = (rnpa or "").strip()
+    norm = db.normalize_rnpa(rnpa)
     with db.session(db_path) as conn:
         r = conn.execute(
-            "SELECT * FROM productos WHERE rnpa = ?", (rnpa.strip(),)
+            "SELECT * FROM productos WHERE rnpa = ? OR rnpa_norm = ? LIMIT 1",
+            (rnpa, norm),
         ).fetchone()
         return _row(r) if r else None
 

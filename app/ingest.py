@@ -175,6 +175,7 @@ def load_excel(path: Path | str, *, db_path: Path | str | None = None) -> int:
         rows.append(
             (
                 rnpa,
+                db.normalize_rnpa(rnpa),
                 nombre,
                 _get(r, "marca"),
                 empresa,
@@ -206,9 +207,9 @@ def load_excel(path: Path | str, *, db_path: Path | str | None = None) -> int:
         conn.execute("DELETE FROM productos_fts")
         conn.executemany(
             """INSERT OR REPLACE INTO productos
-               (rnpa, nombre, marca, empresa, categoria, provincia,
-                vencimiento, gtin, actualizado_en)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+               (rnpa, rnpa_norm, nombre, marca, empresa, categoria,
+                provincia, vencimiento, gtin, actualizado_en)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             unique,
         )
     rows = unique

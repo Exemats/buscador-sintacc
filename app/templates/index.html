@@ -1,13 +1,32 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="search">
-  <h1>Buscador de productos sin TACC</h1>
+<section class="search" aria-labelledby="page-title">
+  <h1 id="page-title">Buscador de productos sin TACC</h1>
   <p class="lead">
-    Buscá por nombre, marca, empresa o RNPA en el listado oficial de ANMAT
-    ({{ "{:,}".format(total).replace(",", ".") }} productos cargados).
+    Buscá por <strong>nombre</strong>, <strong>marca</strong>, <strong>empresa</strong>
+    o <strong>RNPA</strong> en el listado oficial de ANMAT.
+    <span class="counter">{{ "{:,}".format(total).replace(",", ".") }} productos cargados.</span>
   </p>
-  <input id="q" type="search" placeholder="Ej: Arcor mermelada, o un RNPA" autofocus autocomplete="off">
-  <div id="results" class="results"></div>
+
+  <label for="q" class="visually-hidden">Búsqueda</label>
+  <div class="search-box">
+    <input
+      id="q"
+      type="search"
+      inputmode="search"
+      placeholder="Ej: Arcor mermelada, o un RNPA (con o sin guiones)"
+      autofocus
+      autocomplete="off"
+      aria-controls="results"
+      aria-describedby="search-hint">
+    <button id="clear" type="button" class="clear" aria-label="Limpiar búsqueda" hidden>×</button>
+  </div>
+  <p id="search-hint" class="hint">
+    El RNPA puede ingresarse con o sin guiones — buscamos las dos formas.
+  </p>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <ul id="results" class="results" aria-label="Resultados"></ul>
 </section>
 <script src="/static/app.js"></script>
 {% endblock %}

@@ -1,15 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="scan">
-  <h1>Escanear código de barras</h1>
+<section class="scan" aria-labelledby="scan-title">
+  <h1 id="scan-title">Escanear código de barras</h1>
   <p class="lead">
     Apuntá la cámara al código del producto. Si está en OpenFoodFacts,
-    buscamos su nombre en el listado ANMAT.
+    cruzamos su nombre contra el listado ANMAT.
   </p>
-  <button id="start" class="btn">Iniciar cámara</button>
-  <video id="video" playsinline></video>
-  <div id="status" class="status"></div>
-  <div id="results" class="results"></div>
+
+  <div class="scanner-wrap">
+    <video id="video" playsinline muted aria-label="Vista de la cámara"></video>
+    <div class="scan-overlay" aria-hidden="true">
+      <div class="scan-frame"></div>
+    </div>
+  </div>
+
+  <div class="scan-controls">
+    <button id="start" class="btn primary" type="button">Iniciar cámara</button>
+    <button id="stop" class="btn" type="button" hidden>Detener</button>
+    <button id="switch" class="btn" type="button" hidden>Cambiar cámara</button>
+  </div>
+
+  <details class="manual">
+    <summary>O ingresá el código a mano</summary>
+    <form id="manual-form">
+      <label for="manual-input" class="visually-hidden">Código de barras</label>
+      <input id="manual-input" type="text" inputmode="numeric" pattern="[0-9]*"
+             placeholder="EAN/GTIN (8, 12 o 13 dígitos)">
+      <button type="submit" class="btn primary">Buscar</button>
+    </form>
+  </details>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <ul id="results" class="results" aria-label="Resultado del escaneo"></ul>
 </section>
 <script type="module" src="/static/scan.js"></script>
 {% endblock %}
