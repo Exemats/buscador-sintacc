@@ -1,72 +1,99 @@
 # Colab — Buscador de productos sin TACC
 
-Webapp para buscar productos libres de gluten basado en el listado oficial
-de ANMAT (https://listadoalg.anmat.gob.ar/Home), pensada para usar desde
-el celular en el supermercado.
+App web pública para buscar productos libres de gluten basada en el listado
+oficial de ANMAT (https://listadoalg.anmat.gob.ar/Home), pensada para
+usar desde el celular en el supermercado.
 
-Características v1:
+**Web pública (GitHub Pages):** https://exemats.github.io/colab/
 
-- Búsqueda full-text por nombre, marca, empresa o RNPA con autocompletado.
-- Escaneo de código de barras desde la cámara del celular (ZXing) que
-  cruza el GTIN contra OpenFoodFacts y luego matchea con el listado
-  ANMAT.
-- Ingesta automática del Excel oficial de ANMAT (job diario).
+Características:
+
+- Búsqueda fuzzy/prefijo por nombre, marca, empresa o RNPA (con o sin guiones).
+- Escáner de código de barras desde la cámara (`BarcodeDetector` nativo en
+  Android, fallback a ZXing en iOS/desktop), con linterna y zoom cuando
+  el dispositivo lo soporta.
+- "Foto del envase": OCR en el navegador con Tesseract.js que extrae el
+  RNPA o el nombre del envase y lo busca en la DB.
+- Indicador visible de la fecha de la última actualización del listado.
+- Funciona 100% en el navegador, sin servidor: los datos son un único
+  JSON estático servido desde GitHub Pages.
 
 > ⚠️ Importante: la ausencia de un producto en este buscador **no
 > significa que tenga TACC**. Solo refleja el listado oficial de ANMAT
-> en su última actualización.
+> al momento de la última actualización.
 
-## Correrlo en VSCode (local)
-
-1. Abrí la carpeta en VSCode (instalá la extensión **Python** de Microsoft).
-2. Creá el venv y la dependencia (terminal de VSCode, `Ctrl+ñ`):
-   ```bash
-   python -m venv .venv
-   # Linux/Mac
-   source .venv/bin/activate
-   # Windows
-   .venv\Scripts\activate
-
-   pip install -e ".[dev]"
-   playwright install chromium
-   ```
-   (o corré la tarea **"Setup: install + playwright"** desde
-   `Terminal → Run Task…`).
-3. **Descargar los datos del ANMAT** (Playwright abre Chromium, hace
-   click en "Exportar a Excel" y guarda el archivo):
-   ```bash
-   python scripts/update_anmat.py            # headless
-   python scripts/update_anmat.py --headed   # ver el navegador
-   ```
-   Esto crea `data/productos.db`. La primera vez conviene usar
-   `--headed` para verificar que encuentra el botón.
-4. **Levantar la webapp**: en VSCode, panel **Run and Debug** (`Ctrl+Shift+D`),
-   elegí **"Run webapp (uvicorn)"** y dale play. O por terminal:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-5. Abrí http://localhost:8000.
-
-> El escáner de cámara solo funciona en `localhost` o HTTPS. Para
-> probarlo desde el celular en la misma red, usá `ngrok http 8000`.
-
-## Estructura
+## Arquitectura
 
 ```
-app/
-  main.py       FastAPI + rutas
-  db.py         SQLite + FTS5
-  ingest.py     descarga y parseo del Excel ANMAT
-  search.py     queries
-  templates/    Jinja2 (index, scan)
-  static/       JS, CSS
+app/                Backend Python (solo se usa para la ingesta)
+  db.py             SQLite + FTS5
+  ingest.py         Descarga el Excel del ANMAT con Playwright
+  search.py, main.py  (legacy del modo "uvicorn local", aún funcional)
 scripts/
-  update_anmat.py
-data/
-  productos.db  (generado)
+  update_anmat.py   Descarga el Excel y carga la DB
+  build_static.py   Exporta la DB a docs/data/productos.json
+docs/               Sitio estático servido por GitHub Pages
+  index.html
+  app.js            SPA: search + scanner + OCR
+  styles.css
+  data/
+    productos.json  Generado por build_static.py
+    meta.json
+.github/workflows/
+  update-anmat.yml  Cron semanal: descarga, build estático, deploy a Pages
 ```
 
-## Job de actualización
+## Cómo se actualiza el listado
 
-`.github/workflows/update-anmat.yml` corre `scripts/update_anmat.py`
-diariamente y commitea `data/productos.db` actualizado.
+Un workflow de GitHub Actions (`.github/workflows/update-anmat.yml`)
+corre **una vez por semana** (lunes 06:00 UTC):
+
+1. Levanta Chromium con Playwright.
+2. Abre https://listadoalg.anmat.gob.ar/Home y clickea "Exportar a Excel".
+3. Parsea el Excel y arma `data/productos.db`.
+4. Genera `docs/data/productos.json` con `scripts/build_static.py`.
+5. Commitea los cambios y publica `docs/` en GitHub Pages.
+
+Para forzar una actualización manual: pestaña **Actions → "Update ANMAT
+data + deploy" → Run workflow**.
+
+## Desarrollo local
+
+### Probar la web estática (lo que ven los usuarios)
+
+```bash
+# 1. Instalar deps Python (una sola vez)
+pip install -e ".[dev]"
+playwright install chromium
+
+# 2. Descargar datos y generar el JSON estático
+python scripts/update_anmat.py
+python scripts/build_static.py
+
+# 3. Servir docs/ con cualquier servidor estático
+python -m http.server 8000 --directory docs
+```
+
+Abrí http://localhost:8000.
+
+### Modo backend (legacy, opcional)
+
+Sigue funcionando el server FastAPI:
+```bash
+python scripts/serve.py
+# o desde VSCode: F5 → "▶ Run app (auto)"
+```
+
+## Uso desde el celular
+
+Como es una web pública en HTTPS (GitHub Pages), abrís
+https://exemats.github.io/colab/ en el celular y ya tenés:
+
+- Búsqueda por texto.
+- Cámara para escanear códigos de barras (requiere permiso de cámara).
+- "Foto del envase" usa el `<input type=file capture>` que abre la
+  cámara nativa del celular con macro/enfoque correcto, ideal para leer
+  el RNPA del envase.
+
+Tip: en Chrome Android, "Agregar a pantalla de inicio" la deja como una
+app instalada.

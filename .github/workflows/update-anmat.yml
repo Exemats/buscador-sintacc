@@ -1,32 +1,61 @@
-name: Update ANMAT data
+name: Update ANMAT data + deploy
 
 on:
   schedule:
-    - cron: "0 6 * * *"   # 06:00 UTC todos los días
+    - cron: "0 6 * * 1"   # Lunes 06:00 UTC (~ 03:00 Buenos Aires)
   workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  update:
+  update-and-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Install
+          python-version: "3.12"
+
+      - name: Install Python deps + Chromium
         run: |
           pip install -e .
           playwright install --with-deps chromium
-      - name: Download & load ANMAT
+
+      - name: Download ANMAT listing
         run: python scripts/update_anmat.py
-      - name: Commit DB
+
+      - name: Build static JSON for GitHub Pages
+        run: python scripts/build_static.py
+
+      - name: Commit refreshed data
         run: |
-          if [ -n "$(git status --porcelain data/productos.db)" ]; then
+          if [ -n "$(git status --porcelain docs/data)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add data/productos.db
-            git commit -m "chore: actualizar listado ANMAT"
+            git add docs/data
+            git commit -m "chore: actualizar listado ANMAT [skip ci]"
             git push
           else
             echo "Sin cambios."
           fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
