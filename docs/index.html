@@ -38,11 +38,29 @@
         <button id="clear-btn" type="button" class="icon-btn inline" aria-label="Limpiar búsqueda" hidden>×</button>
       </div>
 
-      <div class="filter-chips" role="group" aria-label="Buscar en campo">
+      <div class="filter-chips" role="group" aria-label="Filtrar por campo">
         <button class="chip" type="button" data-field="" aria-pressed="true">Todos</button>
         <button class="chip" type="button" data-field="n" aria-pressed="false">Nombre</button>
         <button class="chip" type="button" data-field="m" aria-pressed="false">Marca</button>
         <button class="chip" type="button" data-field="e" aria-pressed="false">Empresa</button>
+      </div>
+
+      <div id="field-inputs" class="field-inputs" hidden>
+        <div class="field-input-row" id="fi-n" hidden>
+          <label for="q-n" class="field-input-label">Nombre</label>
+          <input id="q-n" class="field-input" type="search" data-field="n"
+            placeholder="Ej: mayonesa" autocomplete="off" aria-controls="results">
+        </div>
+        <div class="field-input-row" id="fi-m" hidden>
+          <label for="q-m" class="field-input-label">Marca</label>
+          <input id="q-m" class="field-input" type="search" data-field="m"
+            placeholder="Ej: Natura" autocomplete="off" aria-controls="results">
+        </div>
+        <div class="field-input-row" id="fi-e" hidden>
+          <label for="q-e" class="field-input-label">Empresa</label>
+          <input id="q-e" class="field-input" type="search" data-field="e"
+            placeholder="Ej: Arcor" autocomplete="off" aria-controls="results">
+        </div>
       </div>
 
       <div class="action-row">

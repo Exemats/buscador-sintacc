@@ -29,20 +29,14 @@ const elInfoClose = $("#info-close");
 const elInfoUpdated = $("#info-updated");
 
 const elChips = document.querySelectorAll(".chip[data-field]");
+const elFieldInputsContainer = $("#field-inputs");
+const elSearchRow = elQ.closest(".search-row");
 
 let allProductos = [];
 let mini = null;
 let dataMeta = null;
 
-// Campo activo para filtrar búsqueda: "" = todos, "n" = nombre, "m" = marca, "e" = empresa
-let activeField = "";
 const FIELD_LABELS = { "": "todos los campos", n: "nombre", m: "marca", e: "empresa" };
-const FIELD_PLACEHOLDERS = {
-  "": "Buscar por nombre, marca, empresa o RNPA…",
-  n: "Buscar por nombre del producto…",
-  m: "Buscar por marca…",
-  e: "Buscar por empresa…",
-};
 
 // Índice de marcas para detección en OCR/scanner.
 let brandsSorted = []; // [{ lower, original }] ordenado por longitud desc
@@ -214,30 +208,103 @@ function searchProductos(term, field = "") {
     .filter(Boolean);
 }
 
+// Intersección de resultados por múltiples campos.
+// fieldMap: e.g. { n: "mayonesa", m: "natura" }
+function searchMultiField(fieldMap) {
+  let resultSet = null;
+  for (const [fld, term] of Object.entries(fieldMap)) {
+    if (!term) continue;
+    const hits = searchProductos(term, fld);
+    const ids = new Set(hits.map(p => p.r));
+    resultSet = resultSet === null ? ids : new Set([...resultSet].filter(id => ids.has(id)));
+  }
+  if (resultSet === null) return [];
+  return allProductos.filter(p => resultSet.has(p.r));
+}
+
+function isMultiFieldMode() {
+  return [...elChips].some(c => c.dataset.field && c.getAttribute("aria-pressed") === "true");
+}
+
+function getActiveFieldMap() {
+  const fieldMap = {};
+  document.querySelectorAll('.chip[data-field]:not([data-field=""])[aria-pressed="true"]').forEach(chip => {
+    const inp = document.getElementById(`q-${chip.dataset.field}`);
+    if (inp) fieldMap[chip.dataset.field] = inp.value.trim();
+  });
+  return fieldMap;
+}
+
 let timer = null;
 let lastSeq = 0;
 
 function onSearchInput() {
-  const term = elQ.value.trim();
-  elClear.hidden = !term;
   clearTimeout(timer);
-  if (!term) { render([], ""); return; }
-  const seq = ++lastSeq;
-  timer = setTimeout(() => {
-    if (seq !== lastSeq) return;
-    const results = searchProductos(term, activeField);
-    render(results, term);
-  }, 100);
+  if (isMultiFieldMode()) {
+    const fieldMap = getActiveFieldMap();
+    const hasAny = Object.values(fieldMap).some(v => v);
+    elClear.hidden = true;
+    if (!hasAny) { render([], ""); return; }
+    const seq = ++lastSeq;
+    timer = setTimeout(() => {
+      if (seq !== lastSeq) return;
+      const results = searchMultiField(fieldMap);
+      const termStr = Object.entries(fieldMap)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${FIELD_LABELS[k]}: "${v}"`)
+        .join(" + ");
+      render(results, termStr);
+    }, 100);
+  } else {
+    const term = elQ.value.trim();
+    elClear.hidden = !term;
+    if (!term) { render([], ""); return; }
+    const seq = ++lastSeq;
+    timer = setTimeout(() => {
+      if (seq !== lastSeq) return;
+      render(searchProductos(term, ""), term);
+    }, 100);
+  }
 }
 
-// Chips de filtro por campo
+// Chips: "Todos" resetea, los demás son multi-seleccionables
 elChips.forEach(chip => {
   chip.addEventListener("click", () => {
-    activeField = chip.dataset.field;
-    elChips.forEach(c => c.setAttribute("aria-pressed", c === chip ? "true" : "false"));
-    elQ.placeholder = FIELD_PLACEHOLDERS[activeField] || FIELD_PLACEHOLDERS[""];
+    const field = chip.dataset.field;
+    if (field === "") {
+      // Resetear a modo general
+      elChips.forEach(c => c.setAttribute("aria-pressed", c === chip ? "true" : "false"));
+      document.querySelectorAll(".field-input").forEach(inp => { inp.value = ""; });
+      elFieldInputsContainer.hidden = true;
+      elSearchRow.hidden = false;
+      elQ.focus();
+      onSearchInput();
+      return;
+    }
+    // Toggle este campo
+    const isActive = chip.getAttribute("aria-pressed") === "true";
+    chip.setAttribute("aria-pressed", isActive ? "false" : "true");
+    // Desactivar "Todos"
+    document.querySelector('.chip[data-field=""]').setAttribute("aria-pressed", "false");
+    // Mostrar/ocultar la fila del input para este campo
+    const row = document.getElementById(`fi-${field}`);
+    if (row) {
+      row.hidden = isActive;
+      if (!isActive) {
+        const inp = document.getElementById(`q-${field}`);
+        if (inp) { inp.value = ""; inp.focus(); }
+      }
+    }
+    // Mostrar/ocultar el contenedor de inputs y la barra de búsqueda general
+    const anyActive = [...elChips].some(c => c.dataset.field && c.getAttribute("aria-pressed") === "true");
+    elFieldInputsContainer.hidden = !anyActive;
+    elSearchRow.hidden = anyActive;
     onSearchInput();
   });
+});
+
+document.querySelectorAll(".field-input").forEach(inp => {
+  inp.addEventListener("input", onSearchInput);
 });
 
 elQ.addEventListener("input", onSearchInput);
@@ -402,41 +469,25 @@ async function fetchOpenFoodFacts(code) {
     const offNombre = (p.product_name || p.generic_name || "").trim();
     const offMarca = (p.brands || "").split(",")[0].trim();
 
-    // Estrategia: buscar primero por marca en campo "m", luego por nombre en "n",
-    // luego combinar. Mostramos los resultados más específicos que encontremos.
     let results = [];
     let matchDesc = "";
 
-    if (offMarca) {
-      const porMarca = searchProductos(offMarca, "m");
-      if (porMarca.length) {
-        // Si también hay nombre, tratamos de cruzar (marca AND nombre)
-        if (offNombre) {
-          const cruzados = porMarca.filter(prod => {
-            const n = (prod.n || "").toLowerCase();
-            return offNombre.toLowerCase().split(/\s+/).some(w => w.length > 3 && n.includes(w));
-          });
-          if (cruzados.length) {
-            results = cruzados;
-            matchDesc = `marca "${offMarca}" y nombre "${offNombre}"`;
-          }
-        }
-        if (!results.length) {
-          results = porMarca;
-          matchDesc = `marca "${offMarca}"`;
-        }
-      }
+    // 1) Buscar por marca Y nombre simultáneamente (intersección)
+    if (offMarca && offNombre) {
+      results = searchMultiField({ m: offMarca, n: offNombre });
+      if (results.length) matchDesc = `marca "${offMarca}" y nombre "${offNombre}"`;
     }
-
+    // 2) Solo marca
+    if (!results.length && offMarca) {
+      results = searchProductos(offMarca, "m");
+      if (results.length) matchDesc = `marca "${offMarca}"`;
+    }
+    // 3) Solo nombre
     if (!results.length && offNombre) {
-      const porNombre = searchProductos(offNombre, "n");
-      if (porNombre.length) {
-        results = porNombre;
-        matchDesc = `nombre "${offNombre}"`;
-      }
+      results = searchProductos(offNombre, "n");
+      if (results.length) matchDesc = `nombre "${offNombre}"`;
     }
-
-    // Fallback: búsqueda combinada genérica
+    // 4) Fallback: búsqueda combinada genérica
     if (!results.length) {
       const query = [offMarca, offNombre].filter(Boolean).join(" ");
       if (!query) {

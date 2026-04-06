@@ -104,6 +104,33 @@ input[type="search"], input[type="text"], input[type="number"] {
   border-color: transparent; font-weight: 700;
 }
 
+/* --- Multi-field search inputs --- */
+.field-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.field-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.field-input-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  width: 4rem;
+  flex-shrink: 0;
+  text-align: right;
+}
+.field-input {
+  flex: 1;
+  padding: 0.6rem 1rem !important;
+  font-size: 0.95rem !important;
+  border-radius: 10px !important;
+}
+
 .action-row { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
 .action {
   flex: 1; min-width: 0;
