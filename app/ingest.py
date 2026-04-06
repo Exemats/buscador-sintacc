@@ -25,11 +25,13 @@ ANMAT_URL = "https://listadoalg.anmat.gob.ar/Home"
 # nombres de columna en el Excel del ANMAT (case-insensitive, sin acentos).
 COLUMN_ALIASES = {
     "rnpa": ["rnpa", "rnpasenasainv", "rnpa_senasa_inv", "registro", "rnpasenasa"],
-    "nombre": ["nombre", "nombre del producto", "producto", "nombre de fantasia",
-               "denominacion", "denominacion de venta"],
+    "nombre": ["nombrefantasia", "nombre de fantasia", "nombre", "nombre del producto",
+               "producto"],
+    "denominacion": ["denominacionventa", "denominacion de venta", "denominacion"],
     "marca": ["marca"],
     "empresa": ["empresa", "razon social", "elaborador", "establecimiento"],
-    "categoria": ["categoria", "rubro"],
+    "categoria": ["tipoproducto", "tipo producto", "categoria", "rubro"],
+    "estado": ["estado"],
     "provincia": ["provincia"],
     "vencimiento": ["vencimiento", "vto", "fecha vencimiento"],
     "gtin": ["gtin", "ean", "codigo de barras"],
@@ -148,24 +150,41 @@ def load_excel(path: Path | str, *, db_path: Path | str | None = None) -> int:
             f"Columnas vistas: {list(df.columns)}"
         )
     now = dt.datetime.utcnow().isoformat(timespec="seconds")
+    def _get(row, key):
+        c = cols.get(key)
+        return (row[c] or "").strip() if c else ""
+
     rows = []
+    skipped_inactive = 0
     for _, r in df.iterrows():
-        rnpa = (r[cols["rnpa"]] or "").strip()
+        rnpa = _get(r, "rnpa")
         if not rnpa:
             continue
+        estado = _get(r, "estado").lower()
+        if estado in {"baja", "inactivo", "0", "false"}:
+            skipped_inactive += 1
+            continue
+        nombre = _get(r, "nombre") or _get(r, "denominacion")
+        denom = _get(r, "denominacion")
+        # Si tenemos las dos, usamos nombre y guardamos denominacion en empresa-fallback.
+        empresa = _get(r, "empresa")
+        if not empresa and denom and denom != nombre:
+            empresa = denom
         rows.append(
             (
                 rnpa,
-                (r[cols["nombre"]] or "").strip() if cols["nombre"] else "",
-                (r[cols["marca"]] or "").strip() if cols["marca"] else "",
-                (r[cols["empresa"]] or "").strip() if cols["empresa"] else "",
-                (r[cols["categoria"]] or "").strip() if cols["categoria"] else "",
-                (r[cols["provincia"]] or "").strip() if cols["provincia"] else "",
-                (r[cols["vencimiento"]] or "").strip() if cols["vencimiento"] else "",
-                (r[cols["gtin"]] or "").strip() if cols["gtin"] else "",
+                nombre,
+                _get(r, "marca"),
+                empresa,
+                _get(r, "categoria"),
+                _get(r, "provincia"),
+                _get(r, "vencimiento"),
+                _get(r, "gtin"),
                 now,
             )
         )
+    if skipped_inactive:
+        log.info("Filas inactivas/baja descartadas: %d", skipped_inactive)
 
     with db.session(db_path) as conn:
         conn.execute("DELETE FROM productos")
