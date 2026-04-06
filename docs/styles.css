@@ -35,7 +35,8 @@ body {
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: var(--bg); z-index: 10;
 }
-.logo { margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--accent); letter-spacing: 0.02em; }
+.logo { margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--accent); letter-spacing: 0.02em; display: inline-flex; align-items: center; gap: 0.4em; }
+.logo-icon { height: 1.5em; width: auto; }
 .icon-btn {
   background: transparent; border: 0; color: var(--muted);
   font-size: 1.4rem; line-height: 1;
