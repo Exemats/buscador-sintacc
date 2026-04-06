@@ -21,13 +21,13 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 @app.get("/")
 def index(request: Request):
     return templates.TemplateResponse(
-        "index.html", {"request": request, "total": search.total()}
+        request, "index.html", {"total": search.total()}
     )
 
 
 @app.get("/scan")
 def scan(request: Request):
-    return templates.TemplateResponse("scan.html", {"request": request})
+    return templates.TemplateResponse(request, "scan.html")
 
 
 @app.get("/api/search")
