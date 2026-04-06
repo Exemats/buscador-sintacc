@@ -36,6 +36,7 @@ body {
   position: sticky; top: 0; background: var(--bg); z-index: 10;
 }
 .logo { margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--accent); letter-spacing: 0.02em; }
+.logo-icon { height: 28px; width: auto; display: block; }
 .icon-btn {
   background: transparent; border: 0; color: var(--muted);
   font-size: 1.4rem; line-height: 1;
