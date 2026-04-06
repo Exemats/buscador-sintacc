@@ -124,7 +124,9 @@ async function loadData() {
 }
 
 function buildIndex() {
-  // MiniSearch: índice fuzzy + prefijo sobre nombre, marca, empresa.
+  // MiniSearch: índice tolerante a typos y palabras incompletas. Usa OR
+  // para no descartar cuando una palabra no matchea, pero rankea por
+  // cantidad de tokens que matchean (mayor score = mejor coincidencia).
   // eslint-disable-next-line no-undef
   mini = new MiniSearch({
     idField: "r",
@@ -132,9 +134,9 @@ function buildIndex() {
     storeFields: ["r", "rn", "n", "m", "e", "c", "p"],
     searchOptions: {
       prefix: true,
-      fuzzy: 0.15,
-      boost: { n: 2, m: 1.5 },
-      combineWith: "AND",
+      fuzzy: 0.25,
+      boost: { n: 2, m: 1.6 },
+      combineWith: "OR",
     },
     extractField: (doc, field) => doc[field] || "",
   });
@@ -159,17 +161,22 @@ function searchProductos(term) {
   if (!mini || !term) return [];
   // 1) ¿Parece un RNPA o código numérico? (>=4 dígitos al normalizar)
   const norm = normalizeRnpa(term);
-  if (norm.length >= 4) {
+  const isMostlyNumeric = term.replace(/\D/g, "").length / term.length > 0.6;
+  if (isMostlyNumeric && norm.length >= 4) {
     const exact = allProductos.filter(p => p.rn === norm || p.r === term);
     if (exact.length) return exact;
-    // Prefijo: matchea RNPAs cuyo número empieza con lo tipeado.
     if (norm.length >= 6) {
       const prefix = allProductos.filter(p => p.rn && p.rn.startsWith(norm));
       if (prefix.length) return prefix;
     }
   }
-  // 2) Búsqueda fuzzy/text
-  return mini.search(term).map(r => allProductos.find(p => p.r === r.id)).filter(Boolean);
+  // 2) Búsqueda fuzzy/text con OR. Intentamos primero AND para resultados
+  //    estrictos; si no hay nada, OR para tolerar typos/palabras extra.
+  let hits = mini.search(term, { combineWith: "AND" });
+  if (!hits.length) hits = mini.search(term, { combineWith: "OR" });
+  return hits
+    .map(r => allProductos.find(p => p.r === r.id))
+    .filter(Boolean);
 }
 
 let timer = null;
@@ -400,49 +407,130 @@ async function loadTesseract() {
 
 elOcrBtn.addEventListener("click", () => elOcrInput.click());
 
+// Pre-procesa la imagen para mejorar OCR: la escala a un ancho mínimo
+// de 1600 px, la pasa a escala de grises y aumenta contraste.
+async function preprocessImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = url;
+    });
+    const targetW = Math.max(1600, img.naturalWidth);
+    const scale = targetW / img.naturalWidth;
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h);
+    const d = data.data;
+    // Grayscale + contraste fuerte centrado en 128.
+    for (let i = 0; i < d.length; i += 4) {
+      const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      // Aumento de contraste (factor ~1.6).
+      const c = Math.min(255, Math.max(0, (g - 128) * 1.6 + 128));
+      d[i] = d[i + 1] = d[i + 2] = c;
+    }
+    ctx.putImageData(data, 0, 0);
+    return await new Promise(res => canvas.toBlob(res, "image/png"));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function extractRnpa(text) {
+  // Intenta varias variantes: con/sin puntos, "Nº", "No", etc.
+  const patterns = [
+    /R\.?\s*N\.?\s*P\.?\s*A\.?[\s:]*(?:N[ºo°.]*)?\s*([0-9][0-9\s.\-/]{5,15})/i,
+    /R\s*N\s*P\s*A[\s:]*([0-9][0-9\s.\-/]{5,15})/i,
+    /\b(\d{2}[\s.\-/]\d{5,7})\b/, // 02-123456 patrón típico
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) return m[1].replace(/[^\d]/g, "");
+  }
+  return null;
+}
+
 elOcrInput.addEventListener("change", async () => {
   const file = elOcrInput.files && elOcrInput.files[0];
   if (!file) return;
-  setStatus("Cargando reconocimiento de texto (primera vez puede tardar)…");
+  setStatus("Procesando imagen…");
   try {
     const Tesseract = await loadTesseract();
     if (!tesseractWorker) {
-      tesseractWorker = await Tesseract.createWorker("spa");
+      setStatus("Cargando modelo OCR (primera vez ~3 MB)…");
+      tesseractWorker = await Tesseract.createWorker("spa", 1, {
+        // logger: m => console.log(m),
+      });
+      await tesseractWorker.setParameters({
+        // PSM 6 = bloque uniforme de texto. Funciona mejor para envases
+        // que el modo "auto" cuando hay fondos coloridos.
+        tessedit_pageseg_mode: "6",
+        preserve_interword_spaces: "1",
+      });
     }
-    setStatus("Leyendo el envase…");
-    const { data: { text } } = await tesseractWorker.recognize(file);
-    elOcrInput.value = "";
 
-    // Buscar RNPA en el texto.
-    const rnpaMatch = text.match(/R\.?\s*N\.?\s*P\.?\s*A\.?\s*(?:N[ºo°.]*)?\s*(\d{1,2}[\s\-./]?\d{4,7})/i);
-    if (rnpaMatch) {
-      const term = rnpaMatch[1];
-      elQ.value = term;
+    setStatus("Mejorando imagen…");
+    const blob = await preprocessImage(file);
+
+    setStatus("Leyendo el envase (puede tardar 5-10 segundos)…");
+    const { data: { text } } = await tesseractWorker.recognize(blob);
+    elOcrInput.value = "";
+    console.log("[OCR] texto detectado:\n", text);
+
+    const cleaned = (text || "").replace(/[ \t]+/g, " ").trim();
+    if (!cleaned) {
+      setStatus("No se pudo leer texto en la foto. Probá con mejor luz, más cerca y bien enfocado.", "error");
+      return;
+    }
+
+    // 1) Intentar RNPA.
+    const rnpa = extractRnpa(cleaned);
+    if (rnpa) {
+      elQ.value = rnpa;
+      const results = searchProductos(rnpa);
+      if (results.length) {
+        setStatus(`RNPA detectado en el envase: ${rnpa}`, "ok");
+        render(results, rnpa);
+        return;
+      }
+    }
+
+    // 2) Intentar con cada línea larga del envase.
+    const lines = cleaned
+      .split(/\n+/)
+      .map(l => l.trim().replace(/[^\wáéíóúñÁÉÍÓÚÑ\s]/g, " ").replace(/\s+/g, " "))
+      .filter(l => l.length >= 4 && /[a-záéíóúñ]/i.test(l));
+
+    // Probar primero la línea más larga, después combinaciones.
+    const candidates = [...new Set([
+      ...lines.sort((a, b) => b.length - a.length).slice(0, 5),
+      lines.join(" ").slice(0, 80),
+    ])];
+
+    for (const term of candidates) {
+      if (!term) continue;
       const results = searchProductos(term);
       if (results.length) {
-        setStatus(`RNPA detectado: ${term}`, "ok");
+        elQ.value = term;
+        setStatus(`Texto detectado: "${term}" — coincidencias en ANMAT:`, "ok");
         render(results, term);
         return;
       }
     }
 
-    // Sino, intentar buscar por las líneas más prometedoras.
-    const lines = text
-      .split(/\n+/)
-      .map(l => l.trim())
-      .filter(l => l.length >= 4 && /[a-záéíóúñ]/i.test(l))
-      .sort((a, b) => b.length - a.length)
-      .slice(0, 5);
-    for (const line of lines) {
-      const results = searchProductos(line);
-      if (results.length) {
-        elQ.value = line;
-        setStatus(`Texto detectado en envase: "${line}"`, "ok");
-        render(results, line);
-        return;
-      }
-    }
-    setStatus(`No encontré coincidencias en el envase. Texto detectado: "${(lines[0] || "").slice(0, 60)}…"`, "error");
+    const preview = lines.slice(0, 3).join(" / ").slice(0, 120);
+    setStatus(
+      `No encontré coincidencias. Texto detectado: "${preview}…". ` +
+      `Probá sacar la foto más cerca del nombre o del RNPA, con buena luz.`,
+      "error"
+    );
   } catch (e) {
     setStatus("Error al leer la imagen: " + e.message, "error");
   }
