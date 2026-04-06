@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Sin TACC — Buscador ANMAT{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <a href="/" class="logo">Sin TACC</a>
+    <nav>
+      <a href="/">Buscar</a>
+      <a href="/scan">Escanear</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <small>
+      Datos: <a href="https://listadoalg.anmat.gob.ar/Home" target="_blank" rel="noopener">listado oficial ANMAT</a>.
+      Que un producto no figure acá <strong>no</strong> implica que tenga TACC.
+    </small>
+  </footer>
+</body>
+</html>

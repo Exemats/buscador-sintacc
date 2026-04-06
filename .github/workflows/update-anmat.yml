@@ -1,0 +1,30 @@
+name: Update ANMAT data
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC todos los días
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .
+      - name: Download & load ANMAT
+        run: python scripts/update_anmat.py
+      - name: Commit DB
+        run: |
+          if [ -n "$(git status --porcelain data/productos.db)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/productos.db
+            git commit -m "chore: actualizar listado ANMAT"
+            git push
+          else
+            echo "Sin cambios."
+          fi

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="search">
+  <h1>Buscador de productos sin TACC</h1>
+  <p class="lead">
+    Buscá por nombre, marca, empresa o RNPA en el listado oficial de ANMAT
+    ({{ "{:,}".format(total).replace(",", ".") }} productos cargados).
+  </p>
+  <input id="q" type="search" placeholder="Ej: Arcor mermelada, o un RNPA" autofocus autocomplete="off">
+  <div id="results" class="results"></div>
+</section>
+<script src="/static/app.js"></script>
+{% endblock %}

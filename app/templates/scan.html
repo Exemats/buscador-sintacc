@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="scan">
+  <h1>Escanear código de barras</h1>
+  <p class="lead">
+    Apuntá la cámara al código del producto. Si está en OpenFoodFacts,
+    buscamos su nombre en el listado ANMAT.
+  </p>
+  <button id="start" class="btn">Iniciar cámara</button>
+  <video id="video" playsinline></video>
+  <div id="status" class="status"></div>
+  <div id="results" class="results"></div>
+</section>
+<script type="module" src="/static/scan.js"></script>
+{% endblock %}
