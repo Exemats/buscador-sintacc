@@ -10,6 +10,15 @@
   --focus: #60a5fa;
   --danger: #f87171;
 }
+/* --- Skip link --- */
+.skip-link {
+  position: absolute; left: -9999px; top: 0.5rem;
+  background: var(--accent); color: var(--accent-fg);
+  padding: 0.5rem 1.1rem; font-weight: 700; font-size: 0.9rem;
+  border-radius: 0 8px 8px 0; z-index: 999; text-decoration: none;
+}
+.skip-link:focus { left: 0; outline: 3px solid var(--focus); }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -31,12 +40,16 @@ body {
 /* --- Top bar --- */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0.85rem 1rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: var(--bg); z-index: 10;
 }
-.logo { margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--accent); letter-spacing: 0.02em; }
-.logo-icon { height: 28px; width: auto; display: block; }
+.logo {
+  margin: 0; display: flex; align-items: center; gap: 0.55rem;
+  text-decoration: none;
+}
+.logo-icon { height: 30px; width: auto; display: block; flex-shrink: 0; }
+.logo-text { font-size: 1.2rem; font-weight: 800; color: var(--accent); letter-spacing: 0.02em; }
 .icon-btn {
   background: transparent; border: 0; color: var(--muted);
   font-size: 1.4rem; line-height: 1;
@@ -69,6 +82,26 @@ input[type="search"], input[type="text"], input[type="number"] {
   background: var(--card);
   color: var(--fg);
   -webkit-appearance: none;
+}
+
+/* --- Filter chips --- */
+.filter-chips {
+  display: flex; gap: 0.4rem; margin-top: 0.55rem; flex-wrap: wrap;
+}
+.chip {
+  background: var(--card-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 0.28rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.82rem; font-weight: 500;
+  cursor: pointer; line-height: 1.5;
+  transition: background 0.12s, color 0.12s;
+}
+.chip:hover { background: #2a2f38; color: var(--fg); }
+.chip[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-fg);
+  border-color: transparent; font-weight: 700;
 }
 
 .action-row { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }

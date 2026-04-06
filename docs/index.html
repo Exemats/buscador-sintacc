@@ -10,46 +10,59 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1 class="logo"><img src="https://www.argentina.gob.ar/sites/default/files/sin_gluten_legal-01.png" alt="" aria-hidden="true" class="logo-icon"></h1>
-    <button id="info-btn" class="icon-btn" type="button" aria-label="Información">ⓘ</button>
+  <a href="#main-content" class="skip-link">Ir al contenido principal</a>
+
+  <header class="topbar" role="banner">
+    <h1 class="logo">
+      <img src="https://www.argentina.gob.ar/sites/default/files/sin_gluten_legal-01.png" alt="" aria-hidden="true" class="logo-icon">
+      <span class="logo-text">Sin TACC</span>
+    </h1>
+    <button id="info-btn" class="icon-btn" type="button" aria-label="Información sobre esta aplicación" aria-haspopup="dialog">ⓘ</button>
   </header>
 
-  <main>
+  <main id="main-content">
     <section class="search-section" aria-labelledby="search-title">
-      <h2 id="search-title" class="visually-hidden">Buscar productos</h2>
+      <h2 id="search-title" class="visually-hidden">Buscar productos sin TACC</h2>
 
       <div class="search-row">
-        <label for="q" class="visually-hidden">Buscar producto</label>
+        <label for="q" class="visually-hidden">Buscar producto sin TACC</label>
         <input
           id="q"
           type="search"
           inputmode="search"
-          placeholder="Buscar por nombre, marca o RNPA…"
+          placeholder="Buscar por nombre, marca, empresa o RNPA…"
           autocomplete="off"
           aria-controls="results"
+          aria-describedby="empty-hint"
           autofocus>
-        <button id="clear-btn" type="button" class="icon-btn inline" aria-label="Limpiar" hidden>×</button>
+        <button id="clear-btn" type="button" class="icon-btn inline" aria-label="Limpiar búsqueda" hidden>×</button>
+      </div>
+
+      <div class="filter-chips" role="group" aria-label="Buscar en campo">
+        <button class="chip" type="button" data-field="" aria-pressed="true">Todos</button>
+        <button class="chip" type="button" data-field="n" aria-pressed="false">Nombre</button>
+        <button class="chip" type="button" data-field="m" aria-pressed="false">Marca</button>
+        <button class="chip" type="button" data-field="e" aria-pressed="false">Empresa</button>
       </div>
 
       <div class="action-row">
-        <button id="scan-btn" type="button" class="action">
+        <button id="scan-btn" type="button" class="action" aria-label="Escanear código de barras con la cámara">
           <span aria-hidden="true">📷</span> Escanear código
         </button>
-        <button id="ocr-btn" type="button" class="action">
+        <button id="ocr-btn" type="button" class="action" aria-label="Sacar foto del envase para reconocer texto">
           <span aria-hidden="true">📄</span> Foto del envase
         </button>
-        <input id="ocr-input" type="file" accept="image/*" capture="environment" hidden>
+        <input id="ocr-input" type="file" accept="image/*" capture="environment" hidden aria-hidden="true">
       </div>
 
-      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
     </section>
 
-    <ul id="results" class="results" aria-label="Resultados"></ul>
+    <ul id="results" class="results" role="list" aria-label="Resultados de búsqueda" aria-live="polite" aria-atomic="false"></ul>
 
     <p id="empty-hint" class="empty-hint">
-      Escribí un nombre, marca o RNPA. También podés usar la cámara para escanear
-      un código de barras o sacarle una foto al envase.
+      Escribí un nombre, marca, empresa o RNPA. También podés usar la cámara para escanear
+      un código de barras o sacarle una foto al envase para detectar automáticamente el producto.
     </p>
   </main>
 
@@ -58,7 +71,7 @@
   </footer>
 
   <!-- Modal: scanner -->
-  <div id="scan-modal" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="scan-title">
+  <div id="scan-modal" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="scan-title" aria-describedby="scan-status">
     <div class="modal-content">
       <header class="modal-header">
         <h2 id="scan-title">Escanear código de barras</h2>
